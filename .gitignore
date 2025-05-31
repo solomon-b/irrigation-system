@@ -1,0 +1,9 @@
+/.direnv/
+/.envrc.local
+/dist-newstyle/
+/result
+/backend/keys/
+/secrets.env
+/server/static/images/*
+/.projectile-cache.eld
+/web-server/result

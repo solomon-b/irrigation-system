@@ -1,0 +1,69 @@
+cabal-version:      3.4
+name:               irrigation-web-server
+version:            0.1.0.0
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Solomon Bothwell
+maintainer:         ssbothwell@gmail.com
+build-type:         Simple
+
+--------------------------------------------------------------------------------
+
+common common-extensions
+  default-extensions:
+      DataKinds
+      DerivingStrategies
+      DeriveAnyClass
+      DerivingVia
+      DeriveGeneric
+      FlexibleContexts
+      FlexibleInstances
+      GADTs
+      GeneralizedNewtypeDeriving
+      ImportQualifiedPost
+      InstanceSigs
+      LambdaCase
+      MultiParamTypeClasses
+      NamedFieldPuns
+      OverloadedStrings
+      RankNTypes
+      RecordWildCards
+      TypeApplications
+      TypeOperators
+      TypeSynonymInstances
+
+common common-warnings
+    ghc-options:    -Wall -threaded
+
+
+--------------------------------------------------------------------------------
+
+executable irrigation-web-server
+    import:           common-extensions, common-warnings
+    main-is:          Main.hs
+    build-depends:    base ^>=4.19.2.0
+                    , irrigation-web-server
+    hs-source-dirs:   app
+    default-language: Haskell2010
+
+--------------------------------------------------------------------------------
+
+library
+    import:           common-extensions, common-warnings
+    build-depends:    base >=4.19.2.0
+                    , aeson
+                    , data-has
+                    , exceptions
+                    , hasql-pool
+                    , hs-opentelemetry-sdk
+                    , log-base
+                    , mtl
+                    , servant-server
+                    , text
+                    , text-display
+                    , unliftio-core
+                    , web-server-core
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    exposed-modules:
+      WebServer
