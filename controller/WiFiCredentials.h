@@ -1,7 +1,7 @@
 #ifndef WIFI_CREDENTIALS_H
 #define WIFI_CREDENTIALS_H
 
-#include "WiFiTypes.h"
+#include "Types.h"
 
 //----------------------------------------------------------------------------//
 // WiFi Credentials Management

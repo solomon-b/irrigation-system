@@ -1,7 +1,7 @@
-#ifndef WIFI_STATE_MACHINE_H
-#define WIFI_STATE_MACHINE_H
+#ifndef STATE_MACHINE_H
+#define STATE_MACHINE_H
 
-#include "WiFiTypes.h"
+#include "Types.h"
 
 //----------------------------------------------------------------------------//
 // Moore Machine Core Functions
@@ -32,4 +32,4 @@ Output outputFunction(const AppState& state);
  */
 Input executeEffect(const Output& effect);
 
-#endif // WIFI_STATE_MACHINE_H
+#endif // STATE_MACHINE_H

@@ -1,5 +1,5 @@
-#ifndef WIFI_TYPES_H
-#define WIFI_TYPES_H
+#ifndef TYPES_H
+#define TYPES_H
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -10,6 +10,9 @@
 
 extern const int power_led_pin;
 extern const int wifi_led_pin;
+extern const int zone1_led_pin;
+extern const int zone2_led_pin;
+extern const int zone3_led_pin;
 
 //----------------------------------------------------------------------------//
 // Type Definitions (Moore Machine Architecture Data Structures)
@@ -39,6 +42,8 @@ enum InputType {
   INPUT_CONNECTION_STARTED,       // WiFi.begin() was called, reset shouldReconnect flag
   INPUT_WIFI_CONNECTED,           // Hardware detected WiFi connection established
   INPUT_WIFI_DISCONNECTED,        // Hardware detected WiFi connection lost
+  INPUT_SCHEDULE_RECEIVED,        // HTTP response with new zone schedule received
+  INPUT_HTTP_ERROR,               // HTTP request failed
   INPUT_TICK                      // Timer event - check for state changes
 };
 
@@ -56,7 +61,9 @@ enum OutputType {
   EFFECT_START_WIFI_CONNECTION,   // Initiate WiFi connection attempt
   EFFECT_RENDER_UI,               // Update serial interface display
   EFFECT_LOG_CONNECTION_SUCCESS,  // Display successful connection message
-  EFFECT_LOG_CONNECTION_LOST      // Display disconnection message
+  EFFECT_LOG_CONNECTION_LOST,     // Display disconnection message
+  EFFECT_POLL_SCHEDULE,           // Make HTTP request to get irrigation schedule
+  EFFECT_UPDATE_ZONES             // Update zone LEDs based on current schedule
 };
 
 /*
@@ -85,6 +92,27 @@ struct Credentials {
   bool isValid() const {
     return strlen(ssid) > 0 && strlen(ssid) < 64 && 
            strlen(pass) > 0 && strlen(pass) < 64;
+  }
+};
+
+/*
+ * IrrigationSchedule: Zone activation schedule from web server
+ * 
+ * Represents the irrigation schedule received from the HTTP endpoint.
+ * Each zone corresponds to a different irrigation area/valve.
+ */
+struct IrrigationSchedule {
+  bool zone1;  // Zone 1 activation state
+  bool zone2;  // Zone 2 activation state
+  bool zone3;  // Zone 3 activation state
+  unsigned long lastUpdate;  // Timestamp of last successful update
+  
+  // Constructor with default values
+  IrrigationSchedule() : zone1(false), zone2(false), zone3(false), lastUpdate(0) {}
+  
+  // Check if schedule data is stale (older than 5 minutes)
+  bool isStale() const {
+    return (millis() - lastUpdate) > 300000;  // 5 minutes in milliseconds
   }
 };
 
@@ -136,6 +164,9 @@ struct AppState {
   unsigned long lastUpdate;    // Timestamp of last state change (milliseconds)
   bool credentialsChanged;     // Flag: need to save credentials to flash
   bool shouldReconnect;        // Flag: need to call WiFi.begin()
+  IrrigationSchedule schedule; // Current irrigation zone schedule
+  unsigned long lastPollTime;  // Timestamp of last HTTP poll attempt
+  bool httpError;              // Flag: last HTTP request failed
   
   // Constructor: Called when creating a new AppState
   // The colon starts an "initialization list" - efficient way to set member values
@@ -143,7 +174,9 @@ struct AppState {
                wifiStatus(WL_IDLE_STATUS),        // WiFi not started yet
                lastUpdate(0),                     // No timestamp yet
                credentialsChanged(false),         // No changes to save
-               shouldReconnect(false) {           // No connection needed yet
+               shouldReconnect(false),            // No connection needed yet
+               lastPollTime(0),                   // No polls yet
+               httpError(false) {                 // No HTTP errors yet
     // Set credential strings to empty (null-terminated)
     credentials.ssid[0] = '\0';  // Empty string
     credentials.pass[0] = '\0';  // Empty string
@@ -168,6 +201,7 @@ struct Input {
   InputType type;                 // Which input symbol this is
   Credentials newCredentials;     // New credentials (if INPUT_CREDENTIALS_ENTERED)
   int wifiStatus;                // WiFi status code (if INPUT_WIFI_*)
+  IrrigationSchedule newSchedule; // New schedule (if INPUT_SCHEDULE_RECEIVED)
   
   // Default constructor
   Input() : type(INPUT_NONE), wifiStatus(0) {
@@ -222,6 +256,19 @@ struct Input {
   static Input tick() {
     Input i;
     i.type = INPUT_TICK;
+    return i;
+  }
+  
+  static Input scheduleReceived(const IrrigationSchedule& schedule) {
+    Input i;
+    i.type = INPUT_SCHEDULE_RECEIVED;
+    i.newSchedule = schedule;
+    return i;
+  }
+  
+  static Input httpError() {
+    Input i;
+    i.type = INPUT_HTTP_ERROR;
     return i;
   }
 };
@@ -288,6 +335,18 @@ struct Output {
     e.type = EFFECT_LOG_CONNECTION_LOST;
     return e;
   }
+  
+  static Output pollSchedule() {
+    Output e;
+    e.type = EFFECT_POLL_SCHEDULE;
+    return e;
+  }
+  
+  static Output updateZones() {
+    Output e;
+    e.type = EFFECT_UPDATE_ZONES;
+    return e;
+  }
 };
 
-#endif // WIFI_TYPES_H
+#endif // TYPES_H

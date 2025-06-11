@@ -1,7 +1,7 @@
-#ifndef WIFI_UI_H
-#define WIFI_UI_H
+#ifndef IRRIGATION_CONTROLLER_H
+#define IRRIGATION_CONTROLLER_H
 
-#include "WiFiTypes.h"
+#include "Types.h"
 
 //----------------------------------------------------------------------------//
 // User Interface and Display
@@ -12,6 +12,12 @@
  * @param mode Current application mode
  */
 void updateLEDs(AppMode mode);
+
+/**
+ * Update zone LEDs based on irrigation schedule
+ * @param schedule Current irrigation schedule
+ */
+void updateZoneLEDs(const IrrigationSchedule& schedule);
 
 /**
  * Display appropriate UI messages based on current mode
@@ -37,6 +43,24 @@ void printMacAddress(byte mac[]);
  * @return Character from serial, or '\0' if no input available
  */
 char readSingleChar();
+
+//----------------------------------------------------------------------------//
+// HTTP Communication
+//----------------------------------------------------------------------------//
+
+/**
+ * Poll the HTTP endpoint for irrigation schedule
+ * @return Input with new schedule or error
+ */
+Input pollIrrigationSchedule();
+
+/**
+ * Parse JSON response into IrrigationSchedule
+ * @param json JSON string to parse
+ * @param schedule Output schedule structure
+ * @return true if parsing successful, false otherwise
+ */
+bool parseScheduleJson(const String& json, IrrigationSchedule* schedule);
 
 //----------------------------------------------------------------------------//
 // State Observers (Reactive UI Updates)
@@ -77,4 +101,4 @@ void observeCredentialChanges(const AppState& oldState, const AppState& newState
 const char* getModeString(AppMode mode);
 #endif
 
-#endif // WIFI_UI_H
+#endif // IRRIGATION_CONTROLLER_H

@@ -1,6 +1,11 @@
-#include "WiFiUI.h"
+#include "IrrigationController.h"
 #include "WiFiCredentials.h"
 #include <WiFi.h>
+#include <ArduinoHttpClient.h>
+#include <ArduinoJson.h>
+
+// External HTTP client from main file
+extern HttpClient g_httpClient;
 
 
 //----------------------------------------------------------------------------//
@@ -22,6 +27,13 @@ void updateLEDs(AppMode mode) {
       digitalWrite(wifi_led_pin, LOW);
       break;
   }
+}
+
+void updateZoneLEDs(const IrrigationSchedule& schedule) {
+  // Update each zone LED based on the schedule
+  digitalWrite(zone1_led_pin, schedule.zone1 ? HIGH : LOW);
+  digitalWrite(zone2_led_pin, schedule.zone2 ? HIGH : LOW);
+  digitalWrite(zone3_led_pin, schedule.zone3 ? HIGH : LOW);
 }
 
 //----------------------------------------------------------------------------//
@@ -145,3 +157,67 @@ const char* getModeString(AppMode mode) {
   }
 }
 #endif
+
+//----------------------------------------------------------------------------//
+// HTTP Communication Functions
+//----------------------------------------------------------------------------//
+
+Input pollIrrigationSchedule() {
+  // Only poll if WiFi is connected
+  if (WiFi.status() != WL_CONNECTED) {
+    return Input::httpError();
+  }
+
+  Serial.println("Polling irrigation schedule...");
+  
+  // Make HTTP GET request
+  g_httpClient.get("/");
+  
+  // Wait for response
+  int statusCode = g_httpClient.responseStatusCode();
+  String response = g_httpClient.responseBody();
+  
+  Serial.print("HTTP Status: ");
+  Serial.println(statusCode);
+  
+  if (statusCode != 200) {
+    Serial.println("HTTP request failed");
+    return Input::httpError();
+  }
+  
+  // Parse JSON response
+  IrrigationSchedule schedule;
+  if (!parseScheduleJson(response, &schedule)) {
+    Serial.println("Failed to parse JSON response");
+    return Input::httpError();
+  }
+  
+  Serial.println("Schedule received successfully");
+  return Input::scheduleReceived(schedule);
+}
+
+bool parseScheduleJson(const String& json, IrrigationSchedule* schedule) {
+  // Create JSON document for parsing
+  JsonDocument doc;
+  
+  // Parse JSON
+  DeserializationError error = deserializeJson(doc, json);
+  if (error) {
+    Serial.print("JSON parsing failed: ");
+    Serial.println(error.c_str());
+    return false;
+  }
+  
+  // Extract zone states
+  schedule->zone1 = doc["zone1"] | false;  // Default to false if key missing
+  schedule->zone2 = doc["zone2"] | false;
+  schedule->zone3 = doc["zone3"] | false;
+  schedule->lastUpdate = millis();
+  
+  Serial.print("Zone schedule: ");
+  Serial.print(schedule->zone1 ? "1" : "0");
+  Serial.print(schedule->zone2 ? "1" : "0");
+  Serial.println(schedule->zone3 ? "1" : "0");
+  
+  return true;
+}

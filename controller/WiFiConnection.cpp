@@ -1,6 +1,6 @@
 #include "WiFiConnection.h"
 #include "WiFiCredentials.h"
-#include "WiFiUI.h"
+#include "IrrigationController.h"
 #include <WiFi.h>
 #include <MooreArduino.h>
 

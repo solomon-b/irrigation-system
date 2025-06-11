@@ -1,19 +1,20 @@
 /*
- * Irrigation Controller - WiFi Connection Manager
+ * Irrigation Controller - WiFi Connection Manager & Zone Control
  * 
- * Manages WiFi connectivity for an irrigation control system using a state machine
- * approach for reliable connection handling and user credential management.
+ * Manages WiFi connectivity and controls irrigation zones based on schedule data
+ * received from a web server using a state machine approach for reliable operation.
  * 
  * Business Domain:
- * This controller maintains WiFi connectivity so the irrigation system can:
- * - Receive scheduling commands from the web server
- * - Report system status and sensor data
- * - Allow remote monitoring and control
+ * This controller maintains WiFi connectivity and controls irrigation zones by:
+ * - Receiving scheduling commands from the web server (http://sower:3000)
+ * - Controlling 3 irrigation zones via LED indicators
+ * - Providing real-time status feedback through LEDs
+ * - Allowing local WiFi credential management
  * 
  * WiFi Connection States:
  * - INITIALIZING: System startup, checking for saved credentials
  * - CONNECTING: Attempting to connect with current credentials
- * - CONNECTED: Successfully connected, ready for irrigation operations
+ * - CONNECTED: Successfully connected, polling irrigation schedule
  * - DISCONNECTED: Connection lost, attempting reconnection
  * - ENTERING_CREDENTIALS: User is inputting new WiFi credentials
  * 
@@ -21,7 +22,16 @@
  * - Arduino Giga R1 WiFi board
  * - Power LED (Pin 2): Always on when powered
  * - WiFi LED (Pin 3): Shows connection status (solid=connected, blink=connecting)
+ * - Zone 1 LED (Pin 4): Irrigation zone 1 status
+ * - Zone 2 LED (Pin 5): Irrigation zone 2 status  
+ * - Zone 3 LED (Pin 6): Irrigation zone 3 status
  * - Serial interface (115200 baud): User interaction and debugging
+ * 
+ * Irrigation Schedule:
+ * - Polls http://sower:3000 every 30 seconds when connected
+ * - Expects JSON: {"zone1":true,"zone2":false,"zone3":true}
+ * - LEDs reflect current zone activation state
+ * - Schedule data cached with 5-minute staleness detection
  * 
  * User Commands:
  * - 'c': Change WiFi credentials
@@ -33,6 +43,10 @@
 
 // Arduino WiFi library for managing wireless connections
 #include <WiFi.h>
+// HTTP client for polling irrigation schedule
+#include <ArduinoHttpClient.h>
+// JSON parsing for schedule data
+#include <ArduinoJson.h>
 // Key-Value store API for persistent credential storage in flash memory
 #include "kvstore_global_api.h"
 // Mbed error handling definitions
@@ -41,11 +55,11 @@
 #include <MooreArduino.h>
 
 // Local modules
-#include "WiFiTypes.h"
+#include "Types.h"
 #include "WiFiCredentials.h"
 #include "WiFiConnection.h"
-#include "WiFiUI.h"
-#include "WiFiStateMachine.h"
+#include "IrrigationController.h"
+#include "StateMachine.h"
 
 using namespace MooreArduino;
 
@@ -76,6 +90,9 @@ using namespace MooreArduino;
 // Digital pins can be HIGH (3.3V) or LOW (0V)
 const int power_led_pin = 2;  // Power indicator LED (always on when board is powered)
 const int wifi_led_pin = 3;   // WiFi status LED (on when connected, blinks when connecting)
+const int zone1_led_pin = 4;  // Zone 1 irrigation LED
+const int zone2_led_pin = 5;  // Zone 2 irrigation LED
+const int zone3_led_pin = 6;  // Zone 3 irrigation LED
 
 //----------------------------------------------------------------------------//
 // Global State Management
@@ -85,8 +102,13 @@ const int wifi_led_pin = 3;   // WiFi status LED (on when connected, blinks when
 MooreMachine<AppState, Input, Output> g_machine(transitionFunction, AppState());
 
 // Global utilities
-Timer g_tickTimer(100);  // 100ms tick rate (10Hz)
-Button g_resetButton(4); // Optional reset button on pin 4
+Timer g_tickTimer(100);         // 100ms tick rate (10Hz)
+Timer g_pollTimer(30000);       // 30 second HTTP polling interval
+Button g_resetButton(7);        // Optional reset button on pin 7
+
+// HTTP client for irrigation schedule polling
+WiFiClient g_wifiClient;
+HttpClient g_httpClient(g_wifiClient, "sower", 3000);
 
 //----------------------------------------------------------------------------//
 // Arduino Setup Function
@@ -96,8 +118,16 @@ void setup() {
   // Configure LED pins as outputs
   pinMode(wifi_led_pin, OUTPUT);    // WiFi status LED
   pinMode(power_led_pin, OUTPUT);   // Power indicator LED
+  pinMode(zone1_led_pin, OUTPUT);   // Zone 1 LED
+  pinMode(zone2_led_pin, OUTPUT);   // Zone 2 LED
+  pinMode(zone3_led_pin, OUTPUT);   // Zone 3 LED
+  
+  // Initialize LEDs
   digitalWrite(power_led_pin, HIGH); // Turn on power LED immediately
   digitalWrite(wifi_led_pin, LOW);   // WiFi LED starts off
+  digitalWrite(zone1_led_pin, LOW);  // Zone LEDs start off
+  digitalWrite(zone2_led_pin, LOW);
+  digitalWrite(zone3_led_pin, LOW);
 
   // Initialize serial communication at 115200 baud
   Serial.begin(115200);
@@ -134,8 +164,9 @@ void setup() {
   // Set up output function for side effects
   g_machine.setOutputFunction(outputFunction);
   
-  // Start tick timer
+  // Start timers
   g_tickTimer.start();
+  g_pollTimer.start();
   
   // Attempt to load saved WiFi credentials from flash memory
   Credentials loadedCreds;
@@ -158,6 +189,12 @@ void loop() {
   
   // 1. Read events from environment (user input, hardware status)
   Input input = readEvents();
+  
+  // 2. Check for polling timer expiry when connected
+  if (input.type == INPUT_NONE && state.mode == MODE_CONNECTED && g_pollTimer.expired()) {
+    input = Input::tick(); // Trigger polling via tick processing
+    g_pollTimer.restart();
+  }
   
   if (input.type != INPUT_NONE) {
     DEBUG_PRINT("DEBUG: Input type=");
@@ -195,6 +232,11 @@ void loop() {
   
   // Always update LEDs (needed for blinking and responsive indicators)
   updateLEDs(state.mode);
+  
+  // Always update zone LEDs when we have a valid schedule
+  if (state.schedule.lastUpdate > 0) {
+    updateZoneLEDs(state.schedule);
+  }
   
   delay(10);  // Small delay to prevent overwhelming the system
 }

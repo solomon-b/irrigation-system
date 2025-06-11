@@ -1,7 +1,7 @@
-#include "WiFiStateMachine.h"
+#include "StateMachine.h"
 #include "WiFiConnection.h"
 #include "WiFiCredentials.h"
-#include "WiFiUI.h"
+#include "IrrigationController.h"
 #include <WiFi.h>
 #include <MooreArduino.h>
 
@@ -82,6 +82,19 @@ AppState transitionFunction(const AppState& state, const Input& input) {
       newState.wifiStatus = input.wifiStatus;  // Store hardware status
       return newState;
       
+    case INPUT_SCHEDULE_RECEIVED:
+      // New irrigation schedule received from HTTP endpoint
+      newState.schedule = input.newSchedule;
+      newState.lastPollTime = millis();
+      newState.httpError = false;
+      return newState;
+      
+    case INPUT_HTTP_ERROR:
+      // HTTP request failed
+      newState.httpError = true;
+      newState.lastPollTime = millis();
+      return newState;
+      
     case INPUT_TICK: {
       // Connection timeout check (pure logic based on state)
       if (newState.mode == MODE_CONNECTING) {
@@ -116,7 +129,20 @@ Output outputFunction(const AppState& state) {
     return Output::saveCredentials();
   }
   
-  // Priority 3: Generate LED effects based on current mode
+  // Priority 3: HTTP polling when connected and poll interval reached
+  if (state.mode == MODE_CONNECTED) {
+    unsigned long currentTime = millis();
+    if (currentTime - state.lastPollTime > 30000) { // 30 second poll interval
+      return Output::pollSchedule();
+    }
+  }
+  
+  // Priority 4: Update zone LEDs based on schedule
+  if (state.mode == MODE_CONNECTED && state.schedule.lastUpdate > 0) {
+    return Output::updateZones();
+  }
+  
+  // Priority 5: Generate LED effects based on current mode
   switch (state.mode) {
     case MODE_CONNECTED:
       return Output::updateLEDs(state.mode);
@@ -174,6 +200,16 @@ Input executeEffect(const Output& effect) {
     case EFFECT_LOG_CONNECTION_LOST:
       Serial.println("✗ WiFi connection lost");
       break;
+      
+    case EFFECT_POLL_SCHEDULE:
+      // Make HTTP request to get irrigation schedule
+      return pollIrrigationSchedule();
+      
+    case EFFECT_UPDATE_ZONES: {
+      const AppState& state = g_machine.getState();
+      updateZoneLEDs(state.schedule);
+      break;
+    }
       
     case EFFECT_NONE:
     default:

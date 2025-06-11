@@ -127,7 +127,10 @@
               libraries = [
                 # Include MooreArduino library
                 moore-arduino.packages.${system}.moore-arduino
-                # Add other libraries as needed
+                # HTTP client for API requests
+                pkgs.arduinoLibraries.ArduinoHttpClient."0.6.1"
+                # JSON parsing library  
+                pkgs.arduinoLibraries.ArduinoJson."7.2.1"
               ];
               packages = with pkgs.arduinoPackages; [
                 platforms.arduino.mbed_giga."4.2.4"

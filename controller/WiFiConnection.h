@@ -1,7 +1,7 @@
 #ifndef WIFI_CONNECTION_H
 #define WIFI_CONNECTION_H
 
-#include "WiFiTypes.h"
+#include "Types.h"
 
 //----------------------------------------------------------------------------//
 // WiFi Connection Management
