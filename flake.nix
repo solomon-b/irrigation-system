@@ -3,12 +3,14 @@
 
   inputs = {
     nixpkgs.url = github:NixOS/nixpkgs/nixpkgs-unstable;
+
     flake-utils.url = github:numtide/flake-utils;
 
     hasql-interpolate-src = {
       url = github:awkward-squad/hasql-interpolate;
       flake = false;
     };
+
     hasql-src = {
       url = github:JonathanLorimer/hasql/expose-hasql-encoders-params;
       flake = false;
@@ -18,13 +20,41 @@
       url = github:jfischoff/tmp-postgres;
       flake = false;
     };
+
+    arduino-nix.url = github:bouk/arduino-nix;
+
+    arduino-index = {
+      url = "github:bouk/arduino-indexes";
+      flake = false;
+    };
+
+    moore-arduino.url = github:solomon-b/moore-arduino;
   };
 
-  outputs = { self, nixpkgs, flake-utils, hasql-interpolate-src, hasql-src, tmp-postgres-src }:
+  outputs = {
+      self,
+      nixpkgs,
+      flake-utils,
+      hasql-interpolate-src,
+      hasql-src,
+      tmp-postgres-src,
+      arduino-nix,
+      arduino-index,
+      moore-arduino
+  }:
     flake-utils.lib.eachSystem [ "x86_64-linux" ]
       (system:
         let
-          pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
+          pkgs = import nixpkgs {
+            inherit system;
+            config.allowUnfree = true;
+            overlays = [
+              (arduino-nix.overlay)
+              (arduino-nix.mkArduinoPackageOverlay (arduino-index + "/index/package_index.json"))
+              (arduino-nix.mkArduinoLibraryOverlay (arduino-index + "/index/library_index.json"))
+            ];
+          };
+
           hsPkgs = pkgs.haskellPackages.override {
             overrides = hfinal: hprev: {
               hasql = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.dontCheck (hfinal.callHackageDirect
@@ -93,11 +123,27 @@
           formatter = pkgs.nixpkgs-fmt;
 
           packages = flake-utils.lib.flattenTree rec {
+            arduino-cli = pkgs.wrapArduinoCLI {
+              libraries = [
+                # Include MooreArduino library
+                moore-arduino.packages.${system}.moore-arduino
+                # Add other libraries as needed
+              ];
+              packages = with pkgs.arduinoPackages; [
+                platforms.arduino.mbed_giga."4.2.4"
+              ];
+            };
+
+            arduino-build = pkgs.writeShellScriptBin "build" ''
+              SKETCH="''${1:-MySketch}"
+              ${arduino-cli}/bin/arduino-cli compile --warnings all --fqbn arduino:mbed_giga:giga --libraries ${moore-arduino.packages.${system}.moore-arduino} $SKETCH
+            '';
             irrigation-web-server = hsPkgs.irrigation-web-server;
             default = hsPkgs.irrigation-web-server;
           };
 
           apps = {
+            arduino-build = flake-utils.lib.mkApp { drv = self.packages.${system}.arduino-build; };
             irrigation-web-server = flake-utils.lib.mkApp { drv = self.packages.${system}.irrigation-web-server; };
             default = self.apps.${system}.irrigation-web-server;
           };
