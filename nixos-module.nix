@@ -41,7 +41,7 @@ in
 
     warp = {
       port = lib.mkOption { type = lib.types.port; default = 2000; };
-      serverName = lib.mkOption { type = lib.types.str; default = "localhost"; };
+      serverName = lib.mkOption { type = lib.types.str; default = "0.0.0.0"; };
       timeout = lib.mkOption { type = lib.types.str; default = "100"; };
     };
 
