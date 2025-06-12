@@ -6,7 +6,7 @@
  * 
  * Business Domain:
  * This controller maintains WiFi connectivity and controls irrigation zones by:
- * - Receiving scheduling commands from the web server (http://sower:3000)
+ * - Receiving scheduling commands from the web server (configurable hostname/port)
  * - Controlling 3 irrigation zones via LED indicators
  * - Providing real-time status feedback through LEDs
  * - Allowing local WiFi credential management
@@ -28,7 +28,7 @@
  * - Serial interface (115200 baud): User interaction and debugging
  * 
  * Irrigation Schedule:
- * - Polls http://sower:3000 every 30 seconds when connected
+ * - Polls configured server every 30 seconds when connected
  * - Expects JSON: {"zone1":true,"zone2":false,"zone3":true}
  * - LEDs reflect current zone activation state
  * - Schedule data cached with 5-minute staleness detection
@@ -95,6 +95,14 @@ const int zone2_led_pin = 5;  // Zone 2 irrigation LED
 const int zone3_led_pin = 6;  // Zone 3 irrigation LED
 
 //----------------------------------------------------------------------------//
+// Network Configuration
+//----------------------------------------------------------------------------//
+
+// HTTP server configuration for irrigation schedule polling
+extern const char* server_hostname = "192.168.5.7";  // Server hostname or IP address  
+extern const int server_port = 3000;           // Server port number
+
+//----------------------------------------------------------------------------//
 // Global State Management
 //----------------------------------------------------------------------------//
 
@@ -103,12 +111,11 @@ MooreMachine<AppState, Input, Output> g_machine(transitionFunction, AppState());
 
 // Global utilities
 Timer g_tickTimer(100);         // 100ms tick rate (10Hz)
-Timer g_pollTimer(30000);       // 30 second HTTP polling interval
-Button g_resetButton(7);        // Optional reset button on pin 7
+Button g_resetButton(13);       // Reset button on pin 13
 
 // HTTP client for irrigation schedule polling
 WiFiClient g_wifiClient;
-HttpClient g_httpClient(g_wifiClient, "sower", 3000);
+HttpClient g_httpClient(g_wifiClient, server_hostname, server_port);
 
 //----------------------------------------------------------------------------//
 // Arduino Setup Function
@@ -164,20 +171,29 @@ void setup() {
   // Set up output function for side effects
   g_machine.setOutputFunction(outputFunction);
   
-  // Start timers
+  // Start timer
   g_tickTimer.start();
-  g_pollTimer.start();
+  
+  // Display initial state for debugging
+  Serial.println("=== Irrigation Controller Starting ===");
+  Serial.print("Initial state mode: ");
+  Serial.println(g_machine.getState().mode);
   
   // Attempt to load saved WiFi credentials from flash memory
   Credentials loadedCreds;
   if (!loadCredentials(&loadedCreds)) {
-    Serial.println("No stored credentials.");
+    Serial.println("No stored credentials found.");
     // No credentials found - start credential entry process
+    Serial.println("Requesting credentials...");
     g_machine.step(Input::requestCredentials());
   } else {
+    Serial.print("Loaded credentials for SSID: ");
+    Serial.println(loadedCreds.ssid);
     // Credentials found - inject them into state and attempt to connect
     g_machine.step(Input::credentialsEntered(loadedCreds));
   }
+  
+  Serial.println("=== Setup Complete ===");
 }
 
 //----------------------------------------------------------------------------//
@@ -187,18 +203,33 @@ void setup() {
 void loop() {
   const AppState& state = g_machine.getState();
   
+  // Status summary every 10 seconds  
+  static unsigned long lastStatusOutput = 0;
+  if (millis() - lastStatusOutput > 10000) {
+    DEBUG_PRINT("Status: mode=");
+    DEBUG_PRINT(state.mode);
+    DEBUG_PRINT(", zones=");
+    DEBUG_PRINT(state.schedule.zone1 ? "1" : "0");
+    DEBUG_PRINT(state.schedule.zone2 ? "1" : "0");
+    DEBUG_PRINTLN(state.schedule.zone3 ? "1" : "0");
+    lastStatusOutput = millis();
+  }
+  
   // 1. Read events from environment (user input, hardware status)
   Input input = readEvents();
   
-  // 2. Check for polling timer expiry when connected
-  if (input.type == INPUT_NONE && state.mode == MODE_CONNECTED && g_pollTimer.expired()) {
-    input = Input::tick(); // Trigger polling via tick processing
-    g_pollTimer.restart();
+  // 2. Check for polling timer expiry when connected (let outputFunction handle the timing)
+  if (input.type == INPUT_NONE && g_tickTimer.expired()) {
+    input = Input::tick(); // Regular tick for timeout checks and polling
+    g_tickTimer.restart();
   }
   
   if (input.type != INPUT_NONE) {
-    DEBUG_PRINT("DEBUG: Input type=");
-    DEBUG_PRINTLN(input.type);
+    // Don't flood serial with tick inputs (type 9), only show interesting events
+    if (input.type != INPUT_TICK) {
+      DEBUG_PRINT("DEBUG: Input type=");
+      DEBUG_PRINTLN(input.type);
+    }
     
     // Handle credential entry (blocking operation for better UX)
     if (input.type == INPUT_REQUEST_CREDENTIALS) {
@@ -224,9 +255,24 @@ void loop() {
     
     // Handle any follow-up inputs from effect execution
     if (followUpInput.type != INPUT_NONE) {
-      DEBUG_PRINT("DEBUG: Follow-up input type=");
-      DEBUG_PRINTLN(followUpInput.type);
+      if (followUpInput.type != INPUT_TICK) {
+        DEBUG_PRINT("DEBUG: Follow-up input type=");
+        DEBUG_PRINTLN(followUpInput.type);
+      }
       g_machine.step(followUpInput);
+    }
+  }
+  
+  // Always generate and execute output based on current state (Moore machine behavior)
+  Output currentOutput = outputFunction(state);
+  if (currentOutput.type != EFFECT_NONE) {
+    Input outputInput = executeEffect(currentOutput);
+    if (outputInput.type != INPUT_NONE) {
+      if (outputInput.type != INPUT_TICK) {
+        DEBUG_PRINT("DEBUG: Output generated input type=");
+        DEBUG_PRINTLN(outputInput.type);
+      }
+      g_machine.step(outputInput);
     }
   }
   

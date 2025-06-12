@@ -44,6 +44,8 @@ enum InputType {
   INPUT_WIFI_DISCONNECTED,        // Hardware detected WiFi connection lost
   INPUT_SCHEDULE_RECEIVED,        // HTTP response with new zone schedule received
   INPUT_HTTP_ERROR,               // HTTP request failed
+  INPUT_CREDENTIALS_SAVED,        // Credentials have been saved to flash
+  INPUT_POLL_STARTED,             // HTTP polling has started
   INPUT_TICK                      // Timer event - check for state changes
 };
 
@@ -164,6 +166,7 @@ struct AppState {
   unsigned long lastUpdate;    // Timestamp of last state change (milliseconds)
   bool credentialsChanged;     // Flag: need to save credentials to flash
   bool shouldReconnect;        // Flag: need to call WiFi.begin()
+  bool shouldPollNow;          // Flag: need to poll immediately
   IrrigationSchedule schedule; // Current irrigation zone schedule
   unsigned long lastPollTime;  // Timestamp of last HTTP poll attempt
   bool httpError;              // Flag: last HTTP request failed
@@ -175,6 +178,7 @@ struct AppState {
                lastUpdate(0),                     // No timestamp yet
                credentialsChanged(false),         // No changes to save
                shouldReconnect(false),            // No connection needed yet
+               shouldPollNow(false),              // No immediate polling needed
                lastPollTime(0),                   // No polls yet
                httpError(false) {                 // No HTTP errors yet
     // Set credential strings to empty (null-terminated)
@@ -269,6 +273,18 @@ struct Input {
   static Input httpError() {
     Input i;
     i.type = INPUT_HTTP_ERROR;
+    return i;
+  }
+  
+  static Input credentialsSaved() {
+    Input i;
+    i.type = INPUT_CREDENTIALS_SAVED;
+    return i;
+  }
+  
+  static Input pollStarted() {
+    Input i;
+    i.type = INPUT_POLL_STARTED;
     return i;
   }
 };

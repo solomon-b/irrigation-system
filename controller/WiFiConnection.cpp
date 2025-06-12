@@ -121,7 +121,7 @@ Input readEvents() {
     return Input::tick();
   }
   
-  // Check for reset button press (optional)
+  // Check for reset button press (hardware credential reset)
   if (g_resetButton.wasPressed()) {
     return Input::requestCredentials();
   }

@@ -4,8 +4,10 @@
 #include <ArduinoHttpClient.h>
 #include <ArduinoJson.h>
 
-// External HTTP client from main file
+// External HTTP client and server config from main file
 extern HttpClient g_httpClient;
+extern const char* server_hostname;
+extern const int server_port;
 
 
 //----------------------------------------------------------------------------//
@@ -165,10 +167,14 @@ const char* getModeString(AppMode mode) {
 Input pollIrrigationSchedule() {
   // Only poll if WiFi is connected
   if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Cannot poll: WiFi not connected");
     return Input::httpError();
   }
 
-  Serial.println("Polling irrigation schedule...");
+  Serial.print("Polling irrigation schedule from ");
+  Serial.print(server_hostname);
+  Serial.print(":");
+  Serial.println(server_port);
   
   // Make HTTP GET request
   g_httpClient.get("/");
@@ -178,7 +184,9 @@ Input pollIrrigationSchedule() {
   String response = g_httpClient.responseBody();
   
   Serial.print("HTTP Status: ");
-  Serial.println(statusCode);
+  Serial.print(statusCode);
+  Serial.print(", Response: ");
+  Serial.println(response);
   
   if (statusCode != 200) {
     Serial.println("HTTP request failed");

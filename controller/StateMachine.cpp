@@ -74,6 +74,8 @@ AppState transitionFunction(const AppState& state, const Input& input) {
       newState.mode = MODE_CONNECTED;           // Update mode
       newState.wifiStatus = input.wifiStatus;  // Store hardware status
       newState.shouldReconnect = false;        // Clear retry flag
+      newState.lastPollTime = 0;               // Force immediate HTTP poll
+      newState.shouldPollNow = true;           // Flag for immediate polling
       return newState;
       
     case INPUT_WIFI_DISCONNECTED:
@@ -93,6 +95,16 @@ AppState transitionFunction(const AppState& state, const Input& input) {
       // HTTP request failed
       newState.httpError = true;
       newState.lastPollTime = millis();
+      return newState;
+      
+    case INPUT_CREDENTIALS_SAVED:
+      // Credentials have been saved to flash - clear the flag
+      newState.credentialsChanged = false;
+      return newState;
+      
+    case INPUT_POLL_STARTED:
+      // HTTP polling has started - clear the immediate poll flag
+      newState.shouldPollNow = false;
       return newState;
       
     case INPUT_TICK: {
@@ -129,10 +141,17 @@ Output outputFunction(const AppState& state) {
     return Output::saveCredentials();
   }
   
-  // Priority 3: HTTP polling when connected and poll interval reached
+  // Priority 3: HTTP polling when connected (immediate or interval based)
   if (state.mode == MODE_CONNECTED) {
+    if (state.shouldPollNow) {
+      DEBUG_PRINTLN("DEBUG: Immediate HTTP poll triggered");
+      return Output::pollSchedule();
+    }
+    
     unsigned long currentTime = millis();
-    if (currentTime - state.lastPollTime > 30000) { // 30 second poll interval
+    unsigned long timeSinceLastPoll = currentTime - state.lastPollTime;
+    if (timeSinceLastPoll > 30000) { // 30 second poll interval
+      DEBUG_PRINTLN("DEBUG: 30-second HTTP poll triggered");
       return Output::pollSchedule();
     }
   }
@@ -176,7 +195,8 @@ Input executeEffect(const Output& effect) {
     case EFFECT_SAVE_CREDENTIALS: {
       const AppState& state = g_machine.getState();
       saveCredentials(&state.credentials);
-      break;
+      // Return input to clear the credentialsChanged flag
+      return Input::credentialsSaved();
     }
     
     case EFFECT_START_WIFI_CONNECTION: {
@@ -201,9 +221,13 @@ Input executeEffect(const Output& effect) {
       Serial.println("✗ WiFi connection lost");
       break;
       
-    case EFFECT_POLL_SCHEDULE:
+    case EFFECT_POLL_SCHEDULE: {
+      // Clear the immediate poll flag first
+      Input pollStartedInput = Input::pollStarted();
+      g_machine.step(pollStartedInput);
       // Make HTTP request to get irrigation schedule
       return pollIrrigationSchedule();
+    }
       
     case EFFECT_UPDATE_ZONES: {
       const AppState& state = g_machine.getState();
