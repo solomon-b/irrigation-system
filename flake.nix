@@ -141,12 +141,39 @@
               SKETCH="''${1:-MySketch}"
               ${arduino-cli}/bin/arduino-cli compile --warnings all --fqbn arduino:mbed_giga:giga --libraries ${moore-arduino.packages.${system}.moore-arduino} $SKETCH
             '';
+
+            arduino-upload = pkgs.writeShellScriptBin "upload" ''
+              SKETCH="''${1:-controller}"
+              PORT="''${2:-/dev/ttyACM0}"
+              
+              echo "Compiling sketch: $SKETCH"
+              ${arduino-cli}/bin/arduino-cli compile --warnings all --fqbn arduino:mbed_giga:giga --libraries ${moore-arduino.packages.${system}.moore-arduino} $SKETCH
+              
+              if [ $? -eq 0 ]; then
+                echo "Uploading to port: $PORT"
+                ${arduino-cli}/bin/arduino-cli upload --fqbn arduino:mbed_giga:giga --port $PORT $SKETCH
+              else
+                echo "Compilation failed. Upload aborted."
+                exit 1
+              fi
+            '';
+
+            arduino-monitor = pkgs.writeShellScriptBin "monitor" ''
+              PORT="''${1:-/dev/ttyACM0}"
+              BAUD="''${2:-115200}"
+              
+              echo "Monitoring serial port: $PORT at $BAUD baud"
+              echo "Press Ctrl+C to exit"
+              ${arduino-cli}/bin/arduino-cli monitor --port $PORT --config baudrate=$BAUD
+            '';
             irrigation-web-server = hsPkgs.irrigation-web-server;
             default = hsPkgs.irrigation-web-server;
           };
 
           apps = {
             arduino-build = flake-utils.lib.mkApp { drv = self.packages.${system}.arduino-build; };
+            arduino-upload = flake-utils.lib.mkApp { drv = self.packages.${system}.arduino-upload; };
+            arduino-monitor = flake-utils.lib.mkApp { drv = self.packages.${system}.arduino-monitor; };
             irrigation-web-server = flake-utils.lib.mkApp { drv = self.packages.${system}.irrigation-web-server; };
             default = self.apps.${system}.irrigation-web-server;
           };
