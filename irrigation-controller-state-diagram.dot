@@ -1,0 +1,80 @@
+digraph IrrigationControllerStateMachine {
+    // Graph attributes
+    rankdir=TB;
+    node [shape=circle, style=filled, fontname="Arial"];
+    edge [fontname="Arial", fontsize=10];
+    
+    // Color scheme
+    node [fillcolor=lightblue];
+    
+    // States
+    INITIALIZING [label="INITIALIZING\n(Power LED on)", fillcolor=lightgreen];
+    ENTERING_CREDENTIALS [label="ENTERING_CREDENTIALS\n(Serial UI active\nWiFi LED off)", fillcolor=lightyellow];
+    CONNECTING [label="CONNECTING\n(WiFi LED blinking\nAttempting connection)", fillcolor=orange];
+    CONNECTED [label="CONNECTED\n(WiFi LED solid\nHTTP polling every 30s)", fillcolor=lightgreen];
+    DISCONNECTED [label="DISCONNECTED\n(WiFi LED off\nConnection lost)", fillcolor=lightcoral];
+    
+    // Initial state
+    start [shape=point, fillcolor=black];
+    start -> INITIALIZING;
+    
+    // Transitions from INITIALIZING
+    INITIALIZING -> ENTERING_CREDENTIALS [label="INPUT_REQUEST_CREDENTIALS\n('c' command)"];
+    INITIALIZING -> CONNECTING [label="INPUT_CREDENTIALS_ENTERED\n(credentials loaded)"];
+    
+    // Transitions from ENTERING_CREDENTIALS
+    ENTERING_CREDENTIALS -> CONNECTING [label="INPUT_CREDENTIALS_ENTERED\n(user completed input)"];
+    
+    // Transitions from CONNECTING
+    CONNECTING -> CONNECTED [label="INPUT_WIFI_CONNECTED\n(WiFi.status() success)"];
+    CONNECTING -> DISCONNECTED [label="INPUT_WIFI_DISCONNECTED\nOR INPUT_TICK (30s timeout)"];
+    CONNECTING -> ENTERING_CREDENTIALS [label="INPUT_REQUEST_CREDENTIALS\n('c' command)"];
+    
+    // Transitions from CONNECTED
+    CONNECTED -> DISCONNECTED [label="INPUT_WIFI_DISCONNECTED\n(connection lost)"];
+    CONNECTED -> ENTERING_CREDENTIALS [label="INPUT_REQUEST_CREDENTIALS\n('c' command)"];
+    CONNECTED -> CONNECTED [label="INPUT_SCHEDULE_RECEIVED\nINPUT_HTTP_ERROR"];
+    
+    // Transitions from DISCONNECTED
+    DISCONNECTED -> CONNECTING [label="INPUT_RETRY_CONNECTION\n('r' command)"];
+    DISCONNECTED -> CONNECTED [label="INPUT_WIFI_CONNECTED\n(automatic reconnect)"];
+    DISCONNECTED -> ENTERING_CREDENTIALS [label="INPUT_REQUEST_CREDENTIALS\n('c' command)"];
+    
+    // Legend
+    subgraph cluster_legend {
+        label="Input Types";
+        style=dashed;
+        fontname="Arial";
+        
+        legend_node [shape=none, label=<
+            <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0">
+                <TR><TD BGCOLOR="lightgray" COLSPAN="2"><B>Key Input Events</B></TD></TR>
+                <TR><TD>'c' command</TD><TD>INPUT_REQUEST_CREDENTIALS</TD></TR>
+                <TR><TD>'r' command</TD><TD>INPUT_RETRY_CONNECTION</TD></TR>
+                <TR><TD>WiFi status</TD><TD>INPUT_WIFI_CONNECTED/DISCONNECTED</TD></TR>
+                <TR><TD>Timer tick</TD><TD>INPUT_TICK (30s timeout)</TD></TR>
+                <TR><TD>HTTP response</TD><TD>INPUT_SCHEDULE_RECEIVED</TD></TR>
+                <TR><TD>HTTP error</TD><TD>INPUT_HTTP_ERROR</TD></TR>
+                <TR><TD>User input done</TD><TD>INPUT_CREDENTIALS_ENTERED</TD></TR>
+            </TABLE>
+        >];
+    }
+    
+    // Effects legend
+    subgraph cluster_effects {
+        label="State Effects";
+        style=dashed;
+        fontname="Arial";
+        
+        effects_node [shape=none, label=<
+            <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0">
+                <TR><TD BGCOLOR="lightgray" COLSPAN="2"><B>Key State Effects</B></TD></TR>
+                <TR><TD>INITIALIZING</TD><TD>EFFECT_UPDATE_LEDS (power)</TD></TR>
+                <TR><TD>CONNECTING</TD><TD>EFFECT_START_WIFI_CONNECTION</TD></TR>
+                <TR><TD>CONNECTED</TD><TD>EFFECT_POLL_SCHEDULE (every 30s)</TD></TR>
+                <TR><TD>DISCONNECTED</TD><TD>EFFECT_LOG_CONNECTION_LOST</TD></TR>
+                <TR><TD>ENTERING_CREDS</TD><TD>EFFECT_RENDER_UI</TD></TR>
+            </TABLE>
+        >];
+    }
+}

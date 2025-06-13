@@ -117,6 +117,7 @@
               pkgs.sqlx-cli
               pkgs.zlib
               pkgs.zlib.dev
+              pkgs.graphviz
             ];
           };
 
@@ -166,6 +167,26 @@
               echo "Press Ctrl+C to exit"
               ${arduino-cli}/bin/arduino-cli monitor --port $PORT --config baudrate=$BAUD
             '';
+
+            generate-state-diagram = pkgs.writeShellScriptBin "generate-state-diagram" ''
+              INPUT_FILE="''${1:-irrigation-controller-state-diagram.dot}"
+              OUTPUT_FILE="''${2:-irrigation-controller-state-diagram.png}"
+              
+              if [ ! -f "$INPUT_FILE" ]; then
+                echo "Error: Input file $INPUT_FILE not found"
+                exit 1
+              fi
+              
+              echo "Generating state diagram: $INPUT_FILE -> $OUTPUT_FILE"
+              ${pkgs.graphviz}/bin/dot -Tpng "$INPUT_FILE" -o "$OUTPUT_FILE"
+              
+              if [ $? -eq 0 ]; then
+                echo "State diagram generated successfully: $OUTPUT_FILE"
+              else
+                echo "Error generating state diagram"
+                exit 1
+              fi
+            '';
             irrigation-web-server = hsPkgs.irrigation-web-server;
             default = hsPkgs.irrigation-web-server;
           };
@@ -174,6 +195,7 @@
             arduino-build = flake-utils.lib.mkApp { drv = self.packages.${system}.arduino-build; };
             arduino-upload = flake-utils.lib.mkApp { drv = self.packages.${system}.arduino-upload; };
             arduino-monitor = flake-utils.lib.mkApp { drv = self.packages.${system}.arduino-monitor; };
+            generate-state-diagram = flake-utils.lib.mkApp { drv = self.packages.${system}.generate-state-diagram; };
             irrigation-web-server = flake-utils.lib.mkApp { drv = self.packages.${system}.irrigation-web-server; };
             default = self.apps.${system}.irrigation-web-server;
           };
