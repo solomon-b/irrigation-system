@@ -89,6 +89,7 @@ AppState transitionFunction(const AppState& state, const Input& input) {
       newState.schedule = input.newSchedule;
       newState.lastPollTime = millis();
       newState.httpError = false;
+      newState.scheduleChanged = true;  // Flag for persistence
       return newState;
       
     case INPUT_HTTP_ERROR:
@@ -100,6 +101,11 @@ AppState transitionFunction(const AppState& state, const Input& input) {
     case INPUT_CREDENTIALS_SAVED:
       // Credentials have been saved to flash - clear the flag
       newState.credentialsChanged = false;
+      return newState;
+      
+    case INPUT_SCHEDULE_SAVED:
+      // Schedule has been saved to flash - clear the flag
+      newState.scheduleChanged = false;
       return newState;
       
     case INPUT_POLL_STARTED:
@@ -141,7 +147,12 @@ Output outputFunction(const AppState& state) {
     return Output::saveCredentials();
   }
   
-  // Priority 3: HTTP polling when connected (immediate or interval based)
+  // Priority 3: Handle schedule that needs saving
+  if (state.scheduleChanged) {
+    return Output::saveSchedule();
+  }
+  
+  // Priority 4: HTTP polling when connected (immediate or interval based)
   if (state.mode == MODE_CONNECTED) {
     if (state.shouldPollNow) {
       DEBUG_PRINTLN("DEBUG: Immediate HTTP poll triggered");
@@ -156,12 +167,7 @@ Output outputFunction(const AppState& state) {
     }
   }
   
-  // Priority 4: Update zone LEDs based on schedule
-  if (state.mode == MODE_CONNECTED && state.schedule.lastUpdate > 0) {
-    return Output::updateZones();
-  }
-  
-  // Priority 5: Generate LED effects based on current mode
+  // Priority 6: Generate LED effects based on current mode
   switch (state.mode) {
     case MODE_CONNECTED:
       return Output::updateLEDs(state.mode);
@@ -197,6 +203,13 @@ Input executeEffect(const Output& effect) {
       saveCredentials(&state.credentials);
       // Return input to clear the credentialsChanged flag
       return Input::credentialsSaved();
+    }
+    
+    case EFFECT_SAVE_SCHEDULE: {
+      const AppState& state = g_machine.getState();
+      saveSchedule(&state.schedule);
+      // Return input to clear the scheduleChanged flag
+      return Input::scheduleSaved();
     }
     
     case EFFECT_START_WIFI_CONNECTION: {

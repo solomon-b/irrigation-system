@@ -39,4 +39,17 @@ bool isValidCredentialLength(const String& credential);
  */
 void flushSerialInput();
 
+/**
+ * Persist irrigation schedule to flash memory using KVStore
+ * @param schedule Pointer to schedule structure to save
+ */
+void saveSchedule(const IrrigationSchedule* schedule);
+
+/**
+ * Load irrigation schedule from flash memory
+ * @param schedule Pointer to schedule structure to populate
+ * @return true if schedule was found and loaded, false otherwise
+ */
+bool loadSchedule(IrrigationSchedule* schedule);
+
 #endif // WIFI_CREDENTIALS_H

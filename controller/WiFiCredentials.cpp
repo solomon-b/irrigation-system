@@ -7,8 +7,9 @@
 //----------------------------------------------------------------------------//
 
 // Key names for persistent storage in KVStore (flash memory)
-const char* KEY_SSID = "wifi_ssid";  // Key for storing WiFi network name
-const char* KEY_PASS = "wifi_pass";  // Key for storing WiFi password
+const char* KEY_SSID = "wifi_ssid";        // Key for storing WiFi network name
+const char* KEY_PASS = "wifi_pass";        // Key for storing WiFi password
+const char* KEY_SCHEDULE = "irrigation_schedule";  // Key for storing irrigation schedule
 
 //----------------------------------------------------------------------------//
 // Credential Persistence Functions
@@ -96,6 +97,7 @@ bool loadCredentials(Credentials* creds) {
 //----------------------------------------------------------------------------//
 // Serial Input Functions
 //----------------------------------------------------------------------------//
+// TODO: Serial Input functions should go in their own module.
 
 void flushSerialInput() {
   while (Serial.available()) Serial.read();  // Read and discard all pending bytes
@@ -138,5 +140,67 @@ bool promptForCredentialsBlocking(Credentials* creds) {
 
   // Convert to C-style char array
   pass_str.toCharArray(creds->pass, sizeof(creds->pass));
+  return true;  // Success
+}
+
+//----------------------------------------------------------------------------//
+// Schedule Persistence Functions
+//----------------------------------------------------------------------------//
+// TODO: Schedule persistance functions should go in their own module.
+
+void saveSchedule(const IrrigationSchedule* schedule) {
+  // Store the entire schedule struct in KVStore
+  size_t schedule_size = sizeof(IrrigationSchedule);
+  int set_schedule_result = kv_set(KEY_SCHEDULE, schedule, schedule_size, 0);
+  
+  // Check for storage errors - halt on failure (critical error)
+  if (set_schedule_result != MBED_SUCCESS) {
+    Serial.print("'kv_set(KEY_SCHEDULE, schedule, schedule_size, 0)' failed with error code ");
+    Serial.println(set_schedule_result);
+    while (true) {}  // Infinite loop - unrecoverable error
+  }
+  
+  Serial.println("Schedule saved to flash memory");
+}
+
+bool loadSchedule(IrrigationSchedule* schedule) {
+  // KVStore info structure to get size information
+  kv_info_t schedule_buffer;
+  
+  // Get metadata about stored schedule
+  int get_schedule_result = kv_get_info(KEY_SCHEDULE, &schedule_buffer);
+  
+  // Check if schedule is missing (normal case for first run)
+  if (get_schedule_result == MBED_ERROR_ITEM_NOT_FOUND) {
+    Serial.println("No saved schedule found");
+    return false;  // No schedule stored yet
+  } else if (get_schedule_result != MBED_SUCCESS) {
+    // Unexpected error accessing schedule
+    Serial.print("kv_get_info failed for KEY_SCHEDULE with ");
+    Serial.println(get_schedule_result);
+    while (true) {}  // Critical error - halt
+  }
+  
+  // Verify size matches our struct (safety check)
+  if (schedule_buffer.size != sizeof(IrrigationSchedule)) {
+    Serial.println("Stored schedule size mismatch - ignoring");
+    return false;
+  }
+  
+  // Read stored schedule
+  int read_schedule_result = kv_get(KEY_SCHEDULE, schedule, schedule_buffer.size, nullptr);
+  
+  // Check for read errors
+  if (read_schedule_result != MBED_SUCCESS) {
+    Serial.print("'kv_get(KEY_SCHEDULE, schedule, size, nullptr);' failed with error code ");
+    Serial.println(read_schedule_result);
+    while (true) {}  // Critical error - halt
+  }
+  
+  Serial.print("Loaded schedule from flash: zones=");
+  Serial.print(schedule->zone1 ? "1" : "0");
+  Serial.print(schedule->zone2 ? "1" : "0");
+  Serial.println(schedule->zone3 ? "1" : "0");
+  
   return true;  // Success
 }

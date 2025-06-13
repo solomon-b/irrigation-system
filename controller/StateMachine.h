@@ -30,6 +30,7 @@ Output outputFunction(const AppState& state);
  * @param effect Output to execute
  * @return Follow-up input if needed, or INPUT_NONE
  */
+// TODO: Rename to `interpretOutput`
 Input executeEffect(const Output& effect);
 
 #endif // STATE_MACHINE_H

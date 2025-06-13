@@ -65,7 +65,9 @@ using namespace MooreArduino;
 
 //----------------------------------------------------------------------------//
 // Debug Configuration
-//----------------------------------------------------------------------------//
+// ----------------------------------------------------------------------------//
+// TODO: Can we consolidate all these debuging definitions across modules into
+// one place and maybe use an argv flag?
 
 // Toggle debug output at compile time
 // Set to 1 to enable verbose debug logging, 0 for production builds
@@ -99,8 +101,8 @@ const int zone3_led_pin = 6;  // Zone 3 irrigation LED
 //----------------------------------------------------------------------------//
 
 // HTTP server configuration for irrigation schedule polling
-extern const char* server_hostname = "192.168.5.7";  // Server hostname or IP address  
-extern const int server_port = 3000;           // Server port number
+const char* server_hostname = "192.168.5.7";  // Server hostname or IP address  
+const int server_port = 3000;           // Server port number
 
 //----------------------------------------------------------------------------//
 // Global State Management
@@ -169,6 +171,7 @@ void setup() {
   g_machine.addStateObserver(observeCredentialChanges);
   
   // Set up output function for side effects
+  // TODO: This should be provided when construction g_machine.
   g_machine.setOutputFunction(outputFunction);
   
   // Start timer
@@ -181,6 +184,7 @@ void setup() {
   
   // Attempt to load saved WiFi credentials from flash memory
   Credentials loadedCreds;
+  bool hasCredentials = false;
   if (!loadCredentials(&loadedCreds)) {
     Serial.println("No stored credentials found.");
     // No credentials found - start credential entry process
@@ -191,6 +195,31 @@ void setup() {
     Serial.println(loadedCreds.ssid);
     // Credentials found - inject them into state and attempt to connect
     g_machine.step(Input::credentialsEntered(loadedCreds));
+    hasCredentials = true;
+  }
+  
+  // Attempt to load saved irrigation schedule from flash memory
+  IrrigationSchedule loadedSchedule;
+  bool hasSchedule = false;
+  if (loadSchedule(&loadedSchedule)) {
+    // Schedule found and valid - update timestamp and inject it into state
+    loadedSchedule.lastUpdate = millis();  // Update to current boot time
+    g_machine.step(Input::scheduleReceived(loadedSchedule));
+    hasSchedule = true;
+    
+    Serial.print("Loaded schedule: zones=");
+    Serial.print(loadedSchedule.zone1 ? "1" : "0");
+    Serial.print(loadedSchedule.zone2 ? "1" : "0");
+    Serial.println(loadedSchedule.zone3 ? "1" : "0");
+    
+    // Force immediate zone LED update during setup
+    updateZoneLEDs(loadedSchedule);
+  }
+  
+  // If we have credentials but no schedule, trigger immediate poll when connected
+  if (hasCredentials && !hasSchedule) {
+    Serial.println("No saved schedule - will poll immediately when connected");
+    // The shouldPollNow flag will be set when WiFi connects
   }
   
   Serial.println("=== Setup Complete ===");
@@ -202,6 +231,7 @@ void setup() {
 
 void loop() {
   const AppState& state = g_machine.getState();
+  
   
   // Status summary every 10 seconds  
   static unsigned long lastStatusOutput = 0;

@@ -15,6 +15,13 @@ extern const int zone2_led_pin;
 extern const int zone3_led_pin;
 
 //----------------------------------------------------------------------------//
+// Network Configuration (extern declarations)
+//----------------------------------------------------------------------------//
+
+extern const char* server_hostname;
+extern const int server_port;
+
+//----------------------------------------------------------------------------//
 // Type Definitions (Moore Machine Architecture Data Structures)
 //----------------------------------------------------------------------------//
 
@@ -45,6 +52,7 @@ enum InputType {
   INPUT_SCHEDULE_RECEIVED,        // HTTP response with new zone schedule received
   INPUT_HTTP_ERROR,               // HTTP request failed
   INPUT_CREDENTIALS_SAVED,        // Credentials have been saved to flash
+  INPUT_SCHEDULE_SAVED,           // Schedule has been saved to flash
   INPUT_POLL_STARTED,             // HTTP polling has started
   INPUT_TICK                      // Timer event - check for state changes
 };
@@ -60,6 +68,7 @@ enum OutputType {
   EFFECT_NONE,                    // No effect to execute
   EFFECT_UPDATE_LEDS,             // Update LED indicators based on current mode
   EFFECT_SAVE_CREDENTIALS,        // Persist credentials to flash storage
+  EFFECT_SAVE_SCHEDULE,           // Persist schedule to flash storage
   EFFECT_START_WIFI_CONNECTION,   // Initiate WiFi connection attempt
   EFFECT_RENDER_UI,               // Update serial interface display
   EFFECT_LOG_CONNECTION_SUCCESS,  // Display successful connection message
@@ -167,6 +176,7 @@ struct AppState {
   bool credentialsChanged;     // Flag: need to save credentials to flash
   bool shouldReconnect;        // Flag: need to call WiFi.begin()
   bool shouldPollNow;          // Flag: need to poll immediately
+  bool scheduleChanged;        // Flag: need to save schedule to flash
   IrrigationSchedule schedule; // Current irrigation zone schedule
   unsigned long lastPollTime;  // Timestamp of last HTTP poll attempt
   bool httpError;              // Flag: last HTTP request failed
@@ -179,6 +189,7 @@ struct AppState {
                credentialsChanged(false),         // No changes to save
                shouldReconnect(false),            // No connection needed yet
                shouldPollNow(false),              // No immediate polling needed
+               scheduleChanged(false),            // No schedule changes to save
                lastPollTime(0),                   // No polls yet
                httpError(false) {                 // No HTTP errors yet
     // Set credential strings to empty (null-terminated)
@@ -282,6 +293,12 @@ struct Input {
     return i;
   }
   
+  static Input scheduleSaved() {
+    Input i;
+    i.type = INPUT_SCHEDULE_SAVED;
+    return i;
+  }
+  
   static Input pollStarted() {
     Input i;
     i.type = INPUT_POLL_STARTED;
@@ -323,6 +340,12 @@ struct Output {
     Output e;
     e.type = EFFECT_SAVE_CREDENTIALS;
     e.credentialsNeedSaving = true;
+    return e;
+  }
+  
+  static Output saveSchedule() {
+    Output e;
+    e.type = EFFECT_SAVE_SCHEDULE;
     return e;
   }
   
